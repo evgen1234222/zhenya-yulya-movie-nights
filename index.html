@@ -7,6 +7,58 @@
 <section class="panel"><div class="tabs"><button data-tab="queue" class="active">Хотим посмотреть</button><button data-tab="watched">Посмотрели</button><button data-tab="fav">♡ Избранное</button></div><p><input id="search" placeholder="Поиск по фильмам..."></p><div id="films"></div></section>
 <dialog id="ratingDialog"><form id="ratingForm"><h2>Оценки фильма</h2><p id="ratingTitle" class="small"></p><label for="rateZ">Женя</label><select id="rateZ"><option value="0">Без оценки</option><option value="1">1 / 10</option><option value="2">2 / 10</option><option value="3">3 / 10</option><option value="4">4 / 10</option><option value="5">5 / 10</option><option value="6">6 / 10</option><option value="7">7 / 10</option><option value="8">8 / 10</option><option value="9">9 / 10</option><option value="10">10 / 10</option></select><label for="rateY">Юля</label><select id="rateY"><option value="0">Без оценки</option><option value="1">1 / 10</option><option value="2">2 / 10</option><option value="3">3 / 10</option><option value="4">4 / 10</option><option value="5">5 / 10</option><option value="6">6 / 10</option><option value="7">7 / 10</option><option value="8">8 / 10</option><option value="9">9 / 10</option><option value="10">10 / 10</option></select><div class="dialog-actions"><button type="button" class="secondary" id="ratingCancel">Отмена</button><button type="submit">Сохранить</button></div></form></dialog><footer class="small" style="text-align:center">Женя ♡ Юля</footer></main><script>
 const KEY="our-movie-nights-v1";let movies=[];let tab="queue";try{movies=JSON.parse(localStorage.getItem(KEY))||[]}catch{}const $=id=>document.getElementById(id);const esc=s=>String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));const save=(change)=>{render();window.cloudPush?.(change)};window.cloudApply=(incoming)=>{movies=incoming;render()};window.cloudReady=()=>{$("addFilm").disabled=false};window.cloudBusy=()=>{$("addFilm").disabled=true};const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+
+const API_URL="https://our-cinema-api.eremenkoevgenn.workers.dev";
+let selectedKP=null,foundKP=[],kpTimer,kpRequest;
+const kpStatus=$("kpStatus"),kpResults=$("kpResults");
+$("form").elements.title.addEventListener("input",()=>{selectedKP=null});
+$("kpQuery").addEventListener("input",()=>{
+ clearTimeout(kpTimer);
+ if(kpRequest)kpRequest.abort();
+ const query=$("kpQuery").value.trim();
+ kpResults.replaceChildren();foundKP=[];
+ if(query.length<2){kpStatus.textContent="Введите хотя бы 2 символа";return}
+ kpStatus.textContent="Ищем фильмы…";
+ kpTimer=setTimeout(async()=>{
+  const controller=new AbortController();kpRequest=controller;
+  try{
+   const response=await fetch(API_URL+"/search?q="+encodeURIComponent(query),{signal:controller.signal});
+   const data=await response.json();
+   if(!response.ok)throw Error(data.error||"Сервис недоступен");
+   if(controller.signal.aborted)return;
+   foundKP=Array.isArray(data.items)?data.items:[];
+   kpStatus.textContent=foundKP.length?"Нажмите на подходящий фильм":"Ничего не найдено — можно добавить фильм вручную";
+   kpResults.innerHTML=foundKP.map(f=>
+    '<button class="kp-hit" type="button" data-kpid="'+Number(f.id)+'">'+
+    (f.poster?'<img alt="" loading="lazy" src="'+esc(f.poster)+'">':'')+
+    '<span><strong>'+esc(f.title)+'</strong><small>'+
+    esc([f.year,f.genre,f.ratingKP?"★ "+f.ratingKP:""].filter(Boolean).join(" · "))+
+    '</small></span></button>').join("");
+  }catch(error){
+   if(error.name==="AbortError")return;
+   kpStatus.textContent="Поиск пока недоступен. Фильм можно добавить вручную.";
+  }
+ },450);
+});
+kpResults.addEventListener("click",async event=>{
+ const button=event.target.closest("button[data-kpid]");if(!button)return;
+ const film=foundKP.find(f=>f.id===Number(button.dataset.kpid));if(!film)return;
+ if(kpRequest)kpRequest.abort();
+ kpResults.replaceChildren();kpStatus.textContent="Загружаем сведения…";
+ let detail=film;
+ try{
+  const response=await fetch(API_URL+"/film/"+film.id);
+  if(response.ok)detail=await response.json();
+ }catch{}
+ const form=$("form");
+ for(const key of ["title","year","genre","poster"]){
+  if(form.elements[key])form.elements[key].value=String(detail[key]||film[key]||"");
+ }
+ selectedKP={kpId:film.id,ratingKP:detail.ratingKP||film.ratingKP||"",description:detail.description||""};
+ $("kpQuery").value=detail.title||film.title;
+ kpStatus.textContent="✓ Фильм найден. Осталось выбрать, кто предложил, и добавить.";
+});
+
 $("form").onsubmit=e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target));const title=v.title.trim();if(movies.some(m=>m.title.trim().toLocaleLowerCase("ru")===title.toLocaleLowerCase("ru"))){alert("Этот фильм уже есть в списке");return}const film={...v,...(selectedKP||{}),title,id:uid(),watched:false,fav:false,rate1:0,rate2:0,date:""};e.target.reset();selectedKP=null;$("kpResults").replaceChildren();$("kpStatus").textContent="Можно искать следующий фильм";save({type:"upsert",film})};
 document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;document.querySelectorAll("[data-tab]").forEach(x=>x.classList.toggle("active",x===b));render()});$("search").oninput=render;
 function render(){$("total").textContent=movies.filter(x=>!x.watched).length;$("watched").textContent=movies.filter(x=>x.watched).length;$("favorites").textContent=movies.filter(x=>x.fav).length;let list=movies.filter(x=>tab==="queue"?!x.watched:tab==="watched"?x.watched:x.fav).filter(x=>(x.title+" "+x.genre).toLowerCase().includes($("search").value.toLowerCase()));$("films").innerHTML=list.length?list.map(m=>'<article class="film">'+(m.poster?'<img class="poster" src="'+esc(m.poster)+'" loading="lazy" onerror="this.style.display=\'none\'">':'<div class="poster" style="display:grid;place-items:center;font-size:30px">🎞️</div>')+'<div class="film-info"><h3>'+esc(m.title)+' '+(m.fav?'♥':'')+'</h3><div class="meta">'+esc([m.year,m.genre,"Предложил(а): "+m.who].filter(Boolean).join(" · "))+'</div>'+(m.ratingKP?'<div class="kp-rating">★ Кинопоиск '+esc(m.ratingKP)+'</div>':'')+(m.description?'<p class="synopsis">'+esc(m.description)+'</p>':'')+(m.note?'<p class="small">'+esc(m.note)+'</p>':'')+(m.watched?'<div class="small">Оценки: Женя '+(m.rate1||"—")+'/10 · Юля '+(m.rate2||"—")+'/10</div>':'')+'<div class="actions"><button data-action="watch" data-id="'+m.id+'">'+(m.watched?'↩ В планы':'✓ Посмотрели')+'</button><button data-action="fav" data-id="'+m.id+'" class="secondary">'+(m.fav?'♥ Убрать':'♡ Любимый')+'</button>'+(m.watched?'<button data-action="rate" data-id="'+m.id+'" class="secondary">★ Оценить</button>':'')+'<button data-action="edit" data-id="'+m.id+'" class="secondary">Изменить</button><button data-action="del" data-id="'+m.id+'" class="danger">×</button></div></div></article>').join(""):'<div class="empty">Здесь пока нет фильмов ♡</div>'}
