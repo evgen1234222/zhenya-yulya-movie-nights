@@ -19,7 +19,10 @@ import {getAuth,signInAnonymously,onAuthStateChanged} from "https://www.gstatic.
 import {getFirestore,doc,onSnapshot,setDoc,getDoc} from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
 const config={apiKey:"AIzaSyCswTwOSF9ulU2BpP4rirc5K8E_k4TE8nc",authDomain:"zhenya-yulya-cinema.firebaseapp.com",projectId:"zhenya-yulya-cinema",appId:"1:974599365331:web:5ff97e75a4eff53334aa26"};
 const app=initializeApp(config),auth=getAuth(app),db=getFirestore(app),status=document.getElementById("cloudStatus");
-// One permanent shared room for both visitors to the same website.\nconst room="8b7e23a9d45c6012f83e4b0a7c96d125e0f4a8b3";\nif(location.hash.startsWith("#room="))history.replaceState(null,"",location.pathname+location.search);\nconst roomRef=doc(db,"rooms",room);let ready=false,updating=false,unsubscribe;
+// One permanent shared room for both visitors to the same website.
+const room="8b7e23a9d45c6012f83e4b0a7c96d125e0f4a8b3";
+if(location.hash.startsWith("#room="))history.replaceState(null,"",location.pathname+location.search);
+const roomRef=doc(db,"rooms",room);let ready=false,updating=false,unsubscribe;
 const setStatus=t=>status.textContent=t;
 window.cloudPush=async data=>{if(!ready||updating)return;try{await setDoc(roomRef,{movies:data,updatedAt:Date.now()});setStatus("♡ Сохранено для вас двоих")}catch(e){setStatus("Ошибка сохранения: "+e.code)}};
 try{await signInAnonymously(auth);const initial=await getDoc(roomRef);if(!initial.exists()){const local=JSON.parse(localStorage.getItem("our-movie-nights-v1")||"[]");await setDoc(roomRef,{movies:Array.isArray(local)?local:[],updatedAt:Date.now()})}
