@@ -1,0 +1,16 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /rooms/{roomId} {
+      // Only a person with the private 40-character room link can address a room.
+      // Anonymous authentication prevents unauthenticated requests; room IDs are unguessable.
+      allow get, create, update: if request.auth != null
+        && roomId.matches('^[a-f0-9]{40}$')
+        && request.resource.data.keys().hasOnly(['movies','updatedAt'])
+        && request.resource.data.movies is list
+        && request.resource.data.movies.size() <= 500
+        && request.resource.data.updatedAt is number;
+      allow list, delete: if false;
+    }
+  }
+}
